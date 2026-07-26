@@ -11,6 +11,7 @@ import json
 import sys
 
 import cv2
+import numpy as np
 
 from ChArUco_board import ARUCO_DICT, SQUARES_HORIZONTALLY, SQUARES_VERTICALLY
 from paths import calibration_path, camera_image_dir, captured_camera_indices
@@ -25,7 +26,30 @@ SENSOR = 'OV7720_omnivision'
 LENS = 'PS3Eye_stock'
 
 MIN_VIEWS = 4       # cv2.calibrateCamera needs several genuinely distinct views
-MIN_CORNERS = 4     # per-view charuco corners needed to use the view at all
+MIN_CORNERS = 6     # per-view charuco corners needed to use the view at all
+                    # (4 is the theoretical minimum, but 4 corners on a grid
+                    # board are usually collinear — see view_is_degenerate)
+
+
+def view_is_degenerate(obj_points, img_points):
+    """True if OpenCV cannot fit a plane homography to this view.
+
+    calibrateCamera's initIntrinsicParams2D fits one homography per view to
+    seed the focal length, and asserts the result is 3x3. findHomography
+    returns an empty matrix for collinear or near-collinear point sets, which
+    surfaces as the unhelpful
+
+        (-215:Assertion failed) matH0.size() == Size(3, 3)
+
+    from deep inside calibrateCamera. Running the same test here means every
+    view we keep is one OpenCV can actually use.
+    """
+    src = np.asarray(obj_points, dtype=np.float32).reshape(-1, 3)[:, :2]
+    dst = np.asarray(img_points, dtype=np.float32).reshape(-1, 2)
+    if len(src) < 4:
+        return True
+    H, _ = cv2.findHomography(src, dst)
+    return H is None or H.shape != (3, 3)
 
 
 def get_calibration_parameters(img_dir):
@@ -65,14 +89,27 @@ def get_calibration_parameters(img_dir):
         charuco_corners, charuco_ids, marker_corners, marker_ids = \
             charuco_detector.detectBoard(gray)
 
-        if charuco_ids is not None and len(charuco_ids) > MIN_CORNERS - 1:
-            obj_points, img_points = board.matchImagePoints(
-                charuco_corners, charuco_ids)
-            if obj_points is not None and len(obj_points) > MIN_CORNERS - 1:
-                all_object_points.append(obj_points)
-                all_image_points.append(img_points)
-        else:
+        n_corners = 0 if charuco_ids is None else len(charuco_ids)
+        if n_corners < MIN_CORNERS:
+            print(f"  Board not detected in {image_file.name} "
+                  f"({n_corners} corners, need {MIN_CORNERS})")
+            continue
+
+        obj_points, img_points = board.matchImagePoints(
+            charuco_corners, charuco_ids)
+        if obj_points is None or len(obj_points) < MIN_CORNERS:
             print(f"  Board not detected in {image_file.name}")
+            continue
+
+        if view_is_degenerate(obj_points, img_points):
+            # Corners all on one row/column: no homography, and calibrateCamera
+            # would abort on the whole set rather than skip the view.
+            print(f"  Skipping {image_file.name}: {len(obj_points)} corners "
+                  f"are collinear")
+            continue
+
+        all_object_points.append(obj_points)
+        all_image_points.append(img_points)
 
     if len(all_object_points) < MIN_VIEWS:
         raise RuntimeError(

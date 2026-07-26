@@ -20,7 +20,8 @@ from ps3eye_camera import (FRAME_H, FRAME_W, annotate, open_cameras,
 
 # Physical size of the marker being *tracked*. This is independent of the
 # calibration board's marker size — don't confuse the two.
-MARKER_SIZE_m = 0.1356  # [m] length of black marker
+MARKER_SIZE_m = 0.15  # [m] length of black marker
+ARUCO_DICT = cv2.aruco.DICT_4X4_250
 
 # aruco detector
 dictionary = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)

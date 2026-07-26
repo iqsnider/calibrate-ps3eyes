@@ -13,7 +13,7 @@ import sys
 import cv2
 
 from ChArUco_board import ARUCO_DICT, SQUARES_HORIZONTALLY, SQUARES_VERTICALLY
-from calibration import MIN_CORNERS, MIN_VIEWS
+from calibration import MIN_CORNERS, MIN_VIEWS, view_is_degenerate
 from paths import camera_image_dir, captured_camera_indices
 
 # Board dimensions are irrelevant to corner *counting*, so unit lengths are
@@ -45,9 +45,19 @@ def check_camera(index):
         n_corners = 0 if charuco_ids is None else len(charuco_ids)
 
         ok = n_corners >= MIN_CORNERS
+        why = "too few corners"
+        if ok:
+            obj_points, img_points = _board.matchImagePoints(
+                charuco_corners, charuco_ids)
+            if obj_points is None or view_is_degenerate(obj_points,
+                                                        img_points):
+                # Same screen calibration.py applies, so this report matches
+                # what calibrate will actually do.
+                ok, why = False, "collinear corners"
+
         usable += ok
         print(f"  {f.name}: {n_markers:2d} markers, {n_corners:2d} corners"
-              f"{'' if ok else '   <- unusable'}")
+              f"{'' if ok else f'   <- unusable ({why})'}")
 
     print(f"  {usable}/{len(image_files)} usable "
           f"(calibration needs at least {MIN_VIEWS})")
