@@ -1,0 +1,14 @@
+[project]
+name = "calibrate-ps3eyes"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.5.1",
+    "opencv-python>=5.0.0.93",
+    "pseyepy",
+]
+
+[tool.uv.sources]
+pseyepy = { git = "https://github.com/iqsnider/pseyepy" }
